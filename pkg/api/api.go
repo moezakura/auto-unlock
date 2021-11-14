@@ -20,9 +20,10 @@ func NewApi(config *config.Config) *Api {
 }
 
 func (a *Api) UnlockWithAll() error {
-	u := "https://unlock.mox.si/exec"
+	u := "https://unlock.mox.si/exec?"
 	v := url.Values{}
-	v.Add("token", "aa")
+	v.Add("token", a.token)
+	v.Add("is_door", "true")
 
 	resp, err := http.Get(u + v.Encode())
 	if err != nil {

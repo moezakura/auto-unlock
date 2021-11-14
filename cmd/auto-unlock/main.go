@@ -3,9 +3,13 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"time"
+
+	"github.com/moezakura/auto-unlock/pkg/arpscan"
 
 	"github.com/heetch/confita"
 	"github.com/heetch/confita/backend/env"
@@ -22,10 +26,11 @@ var (
 )
 
 func main() {
+	home := os.Getenv("HOME")
 	isVerbose := false
 	configPath := ""
 	flag.BoolVar(&isVerbose, "v", false, "")
-	flag.StringVar(&configPath, "c", "~/.auto-unlock.yaml", "")
+	flag.StringVar(&configPath, "c", home+"/.auto-unlock.yaml", "")
 	flag.Parse()
 
 	cfg := &config.Config{}
@@ -39,7 +44,10 @@ func main() {
 		panic(err)
 	}
 
+	fmt.Printf("config: %#v\n", cfg)
+
 	s := soundmeter.NewSoundMeter()
+	as := arpscan.NewArpScan()
 	td := timedb.NewTimeDB()
 	client := api.NewApi(cfg)
 
@@ -48,6 +56,10 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+	}()
+
+	go func() {
+		as.Run(1*time.Second, 5*time.Second)
 	}()
 
 	lt := time.Now().UnixMilli()
@@ -70,9 +82,22 @@ func main() {
 			log.Printf("%s, %dms, avg: %f\n", l, time.Now().UnixMilli()-lt, avg)
 		}
 
-		if avg > 8500 {
+		if avg > float64(cfg.SoundLevel) {
 			now := time.Now()
 			if lastUnlockedAt.Add(3 * time.Second).After(now) {
+				continue
+			}
+
+			macOk := false
+			for _, m := range cfg.HostMacAddress {
+				if as.Exist(m) {
+					macOk = true
+					break
+				}
+			}
+
+			if !macOk {
+				log.Printf("not found mac address")
 				continue
 			}
 
