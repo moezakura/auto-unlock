@@ -19,7 +19,7 @@ func NewSoundMeter() *SoundMeter {
 }
 
 func (s *SoundMeter) Exec() error {
-	cmd := exec.Command("/usr/local/bin/soundmeter", "--segment", "0.2")
+	cmd := exec.Command("soundmeter", "--segment", "0.2")
 	var err error
 
 	s.stdout, _ = cmd.StdoutPipe()

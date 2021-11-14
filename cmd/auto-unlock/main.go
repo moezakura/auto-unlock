@@ -1,22 +1,47 @@
 package main
 
 import (
+	"context"
+	"flag"
 	"log"
 	"strconv"
 	"time"
 
-	"github.com/moezakura/auto-unlock/pkg/timedb"
-
+	"github.com/heetch/confita"
+	"github.com/heetch/confita/backend/env"
+	"github.com/heetch/confita/backend/file"
+	"github.com/heetch/confita/backend/flags"
+	"github.com/moezakura/auto-unlock/pkg/api"
+	"github.com/moezakura/auto-unlock/pkg/config"
 	"github.com/moezakura/auto-unlock/pkg/soundmeter"
+	"github.com/moezakura/auto-unlock/pkg/timedb"
 )
 
 var (
-	soundLevels = make([]int, 10)
+	lastUnlockedAt = time.Now()
 )
 
 func main() {
+	isVerbose := false
+	configPath := ""
+	flag.BoolVar(&isVerbose, "v", false, "")
+	flag.StringVar(&configPath, "c", "~/.auto-unlock.yaml", "")
+	flag.Parse()
+
+	cfg := &config.Config{}
+	loader := confita.NewLoader(
+		env.NewBackend(),
+		file.NewBackend(configPath),
+		flags.NewBackend(),
+	)
+	err := loader.Load(context.Background(), cfg)
+	if err != nil {
+		panic(err)
+	}
+
 	s := soundmeter.NewSoundMeter()
 	td := timedb.NewTimeDB()
+	client := api.NewApi(cfg)
 
 	go func() {
 		err := s.Exec()
@@ -25,7 +50,7 @@ func main() {
 		}
 	}()
 
-	//lt := time.Now().UnixMilli()
+	lt := time.Now().UnixMilli()
 	for {
 		l := s.GetLine()
 		if l == "" {
@@ -41,12 +66,25 @@ func main() {
 		td.AddIntWithLife(n, 2*time.Second)
 
 		avg := td.GetAVGByAllInt()
-		// fmt.Printf("%s, %dms, avg: %f\n", l, time.Now().UnixMilli()-lt, avg)
-
-		if avg > 8500 {
-			log.Println("UNLOCK!!")
+		if isVerbose {
+			log.Printf("%s, %dms, avg: %f\n", l, time.Now().UnixMilli()-lt, avg)
 		}
 
-		//lt = time.Now().UnixMilli()
+		if avg > 8500 {
+			now := time.Now()
+			if lastUnlockedAt.Add(3 * time.Second).After(now) {
+				continue
+			}
+
+			lastUnlockedAt = now
+			go func() {
+				err := client.UnlockWithAll()
+				if err != nil {
+					log.Printf("failed to unlock by client: %v", err)
+				}
+			}()
+		}
+
+		lt = time.Now().UnixMilli()
 	}
 }
