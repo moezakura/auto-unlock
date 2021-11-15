@@ -3,19 +3,17 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"strconv"
 	"time"
-
-	"github.com/moezakura/auto-unlock/pkg/arpscan"
 
 	"github.com/heetch/confita"
 	"github.com/heetch/confita/backend/env"
 	"github.com/heetch/confita/backend/file"
 	"github.com/heetch/confita/backend/flags"
 	"github.com/moezakura/auto-unlock/pkg/api"
+	"github.com/moezakura/auto-unlock/pkg/arpscan"
 	"github.com/moezakura/auto-unlock/pkg/config"
 	"github.com/moezakura/auto-unlock/pkg/soundmeter"
 	"github.com/moezakura/auto-unlock/pkg/timedb"
@@ -44,10 +42,10 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Printf("config: %#v\n", cfg)
+	log.Printf("config: %#v\n", cfg)
 
 	s := soundmeter.NewSoundMeter()
-	as := arpscan.NewArpScan()
+	as := arpscan.NewArpScan(isVerbose)
 	td := timedb.NewTimeDB()
 	client := api.NewApi(cfg)
 
@@ -59,7 +57,7 @@ func main() {
 	}()
 
 	go func() {
-		as.Run(1*time.Second, 5*time.Second)
+		as.Run(1*time.Second, 10*time.Second)
 	}()
 
 	lt := time.Now().UnixMilli()

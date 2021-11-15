@@ -13,11 +13,13 @@ import (
 type ArpScan struct {
 	macAddress map[string]*mac
 	lock       sync.Mutex
+	isVerbose  bool
 }
 
-func NewArpScan() *ArpScan {
+func NewArpScan(isVerbose bool) *ArpScan {
 	return &ArpScan{
 		macAddress: make(map[string]*mac),
+		isVerbose:  isVerbose,
 	}
 }
 
@@ -37,15 +39,19 @@ func (a *ArpScan) Run(interval time.Duration, life time.Duration) {
 		nm := make(map[string]*mac)
 		a.lock.Lock()
 		for mac, v := range a.macAddress {
-			if !v.LastTime.Add(life).After(now) {
-				continue
-			}
 			nm[mac] = v
 		}
 		a.lock.Unlock()
 
 		for _, m := range mas {
+			if strings.TrimSpace(m) == "" {
+				continue
+			}
+
 			if _, ok := nm[m]; ok {
+				if a.isVerbose {
+					log.Printf("Updated mac address: %s (%+v -> %+v)", m, nm[m].LastTime, now)
+				}
 				nm[m].LastTime = now
 				continue
 			}
@@ -55,6 +61,7 @@ func (a *ArpScan) Run(interval time.Duration, life time.Duration) {
 				LastTime: now,
 			}
 			nm[m] = mc
+
 			log.Printf("found mac %s", m)
 		}
 
@@ -96,7 +103,8 @@ func (a *ArpScan) Exist(mac string) bool {
 	}
 
 	now := time.Now()
-	if !v.FoundAt.Add(30 * time.Second).After(now) {
+	if v.FoundAt.Add(30 * time.Second).Before(now) {
+		log.Printf("%s is too old: %s sec", mac, now.Sub(v.FoundAt).String())
 		return false
 	}
 
