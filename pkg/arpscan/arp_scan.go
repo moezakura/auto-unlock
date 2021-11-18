@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/moezakura/auto-unlock/pkg/times"
 	"golang.org/x/xerrors"
 )
 
@@ -50,8 +51,18 @@ func (a *ArpScan) Run(interval time.Duration, life time.Duration) {
 
 			if _, ok := nm[m]; ok {
 				if a.isVerbose {
-					log.Printf("Updated mac address: %s (%+v -> %+v)", m, nm[m].LastTime, now)
+					log.Printf("Updated mac address: %s (%s -> %s)", m,
+						times.ToYMDHIS(nm[m].LastTime), times.ToYMDHIS(now))
 				}
+
+				if nm[m].LastTime.Add(2 * time.Minute).Before(now) {
+					if a.isVerbose {
+						log.Printf("Refound mac address: %s (found: %s, refound: %s)", m,
+							times.ToYMDHIS(nm[m].FoundAt), times.ToYMDHIS(now))
+					}
+					nm[m].FoundAt = now
+				}
+
 				nm[m].LastTime = now
 				continue
 			}
@@ -72,9 +83,9 @@ func (a *ArpScan) Run(interval time.Duration, life time.Duration) {
 }
 
 func (a *ArpScan) exec() ([]string, error) {
-	rb, err := exec.Command("sudo", "arp-scan", "-l", "-q", "-x").Output()
+	rb, err := exec.Command("sudo", "arp-scan", "-lqx").Output()
 	if err != nil {
-		return nil, xerrors.Errorf("failed to exec arp-scan: %w", err)
+		return nil, xerrors.Errorf("failed to exec arp-scan: res: %s, %w", string(rb), err)
 	}
 
 	rs := string(rb)
