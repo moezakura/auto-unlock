@@ -1,6 +1,7 @@
 package arpscan
 
 import (
+	"io"
 	"log"
 	"os/exec"
 	"strings"
@@ -83,12 +84,27 @@ func (a *ArpScan) Run(interval time.Duration, life time.Duration) {
 }
 
 func (a *ArpScan) exec() ([]string, error) {
-	rb, err := exec.Command("sudo", "arp-scan", "-lqx").Output()
+	cmd := exec.Command("sudo", "arp-scan", "-lqx")
+
+	stdout, _ := cmd.StdoutPipe()
+	stderr, _ := cmd.StderrPipe()
+
+	err := cmd.Start()
+	defer func() {
+		_ = stdout.Close()
+		_ = stderr.Close()
+	}()
+
 	if err != nil {
-		return nil, xerrors.Errorf("failed to exec arp-scan: res: %s, %w", string(rb), err)
+		o, _ := io.ReadAll(stdout)
+		e, _ := io.ReadAll(stderr)
+
+		return nil, xerrors.Errorf("failed to exec arp-scan: res: stdout: %s, stderr: %s,  err:%w",
+			string(o), string(e), err)
 	}
 
-	rs := string(rb)
+	o, _ := io.ReadAll(stdout)
+	rs := string(o)
 	rss := strings.Split(rs, "\n")
 	ms := make([]string, len(rss))
 	for _, l := range rss {
