@@ -15,12 +15,15 @@ import (
 	"github.com/moezakura/auto-unlock/pkg/api"
 	"github.com/moezakura/auto-unlock/pkg/arpscan"
 	"github.com/moezakura/auto-unlock/pkg/config"
+	"github.com/moezakura/auto-unlock/pkg/slack"
 	"github.com/moezakura/auto-unlock/pkg/soundmeter"
 	"github.com/moezakura/auto-unlock/pkg/timedb"
+	"github.com/moezakura/auto-unlock/pkg/times"
 )
 
 var (
-	lastUnlockedAt = time.Now()
+	lastUnlockedAt = times.Zero()
+	lastSoundedAt  = times.Zero()
 )
 
 func main() {
@@ -45,6 +48,7 @@ func main() {
 	log.Printf("config: %#v\n", cfg)
 
 	s := soundmeter.NewSoundMeter()
+	sc := slack.NewSlack(cfg)
 	as := arpscan.NewArpScan(isVerbose)
 	td := timedb.NewTimeDB()
 	client := api.NewApi(cfg)
@@ -81,33 +85,45 @@ func main() {
 		}
 
 		if avg > float64(cfg.SoundLevel) {
-			now := time.Now()
-			if lastUnlockedAt.Add(3 * time.Second).After(now) {
-				continue
-			}
-
-			macOk := false
-			for _, m := range cfg.HostMacAddress {
-				if as.Exist(m) {
-					macOk = true
-					break
-				}
-			}
-
-			if !macOk {
-				log.Printf("not found mac address")
-				continue
-			}
-
-			lastUnlockedAt = now
-			go func() {
-				err := client.UnlockWithAll()
-				if err != nil {
-					log.Printf("failed to unlock by client: %v", err)
-				}
-			}()
+			overSound(cfg, client, as, sc)
 		}
 
 		lt = time.Now().UnixMilli()
 	}
+}
+
+func overSound(cfg *config.Config, client *api.Api, as *arpscan.ArpScan, sc *slack.Slack) {
+	now := time.Now()
+	if lastUnlockedAt.Add(3 * time.Second).After(now) {
+		return
+	}
+
+	if lastSoundedAt.Add(5 * time.Minute).Before(now) {
+		err := sc.SendMessage("call intercom!!!")
+		if err != nil {
+			log.Printf("failed to send message: %+v", err)
+		}
+		lastSoundedAt = now
+	}
+
+	macOk := false
+	for _, m := range cfg.HostMacAddress {
+		if as.Exist(m) {
+			macOk = true
+			break
+		}
+	}
+
+	if !macOk {
+		log.Printf("not found mac address")
+		return
+	}
+
+	lastUnlockedAt = now
+	go func() {
+		err := client.UnlockWithAll()
+		if err != nil {
+			log.Printf("failed to unlock by client: %v", err)
+		}
+	}()
 }
